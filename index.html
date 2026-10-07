@@ -1103,15 +1103,18 @@
         function loadNextTargetWord() {
             if (gameWordsQueue.length === 0) {
                 let pool = wordList.filter(w => {
-                    if (selectedWordLength === '2') return w.length === 2;
-                    if (selectedWordLength === '3') return w.length === 3;
-                    if (selectedWordLength === '4') return w.length >= 4;
-                    return true;
+                    if (selectedWordLength === '2') return w && w.length === 2;
+                    if (selectedWordLength === '3') return w && w.length === 3;
+                    if (selectedWordLength === '4') return w && w.length >= 4;
+                    return Boolean(w);
                 });
+                if (!pool || pool.length === 0) {
+                    pool = [...DEFAULT_WORDS];
+                }
                 gameWordsQueue = pool.sort(() => Math.random() - 0.5);
             }
 
-            currentTargetWord = gameWordsQueue.pop();
+            currentTargetWord = gameWordsQueue.pop() || DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
             currentTargetIndex = 0;
             fallingBalloons = [];
 
@@ -1145,9 +1148,11 @@
 
         function spawnBalloon() {
             if (!gameCanvas) return;
+            if (!currentTargetWord || currentTargetIndex >= currentTargetWord.length) return;
 
             const radius = Math.min(gameCanvas.width, gameCanvas.height) * 0.08 + 12;
             const requiredChar = currentTargetWord[currentTargetIndex];
+            if (!requiredChar) return;
             
             const hasRequiredCharOnScreen = fallingBalloons.some(b => b.char === requiredChar);
 
@@ -1160,13 +1165,13 @@
 
                 for (let i = 0; i < currentTargetWord.length; i++) {
                     const l = currentTargetWord[i];
-                    if (!fallingBalloons.some(b => b.char === l)) {
+                    if (l && !fallingBalloons.some(b => b.char === l)) {
                         possibleChars.push(l);
                     }
                 }
 
                 DISTRACTOR_LETTERS.forEach(l => {
-                    if (!fallingBalloons.some(b => b.char === l)) {
+                    if (l && !fallingBalloons.some(b => b.char === l)) {
                         possibleChars.push(l);
                     }
                 });
@@ -1175,6 +1180,7 @@
                 char = possibleChars[Math.floor(Math.random() * possibleChars.length)];
             }
 
+            if (!char || char === 'undefined') return;
             if (fallingBalloons.some(b => b.char === char)) return;
 
             let bestX = -1;
@@ -1251,6 +1257,10 @@
 
             for (let i = fallingBalloons.length - 1; i >= 0; i--) {
                 const b = fallingBalloons[i];
+                if (!b || !b.char || b.char === 'undefined') {
+                    fallingBalloons.splice(i, 1);
+                    continue;
+                }
 
                 b.y += b.speed;
                 b.wobbleOffset += 0.02;
@@ -1349,7 +1359,9 @@
         }
 
         function handleBalloonHit(balloon, index, posX, posY) {
+            if (!currentTargetWord || currentTargetIndex >= currentTargetWord.length) return;
             const requiredChar = currentTargetWord[currentTargetIndex];
+            if (!requiredChar) return;
 
             createPopParticles(posX, posY, balloon.color.bg);
 
@@ -1361,6 +1373,7 @@
                 renderWordTargetCards();
 
                 if (currentTargetIndex >= currentTargetWord.length) {
+                    fallingBalloons = [];
                     solvedWordsCount++;
                     document.getElementById('game-score').innerText = solvedWordsCount;
 
