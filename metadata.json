@@ -1,0 +1,10 @@
+{
+  "name": "한글 팡팡! 손으로 잡는 한글 놀이",
+  "description": "가을 한옥 마을에서 즐기는 손 모션 인식 한글 낱말 터뜨리기 놀이",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

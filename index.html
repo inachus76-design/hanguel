@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>한글 팡팡! 손으로 잡는 한글 놀이</title>
+    <meta name="description" content="가을 한옥 마을에서 즐기는 손 모션 인식 한글 낱말 터뜨리기 놀이">
+    <meta property="og:title" content="한글 팡팡! 손으로 잡는 한글 놀이">
+    <meta property="og:description" content="가을 한옥 마을에서 즐기는 손 모션 인식 한글 낱말 터뜨리기 놀이">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts (Jua & Gaegu) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Jua&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Jua', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        .font-gaegu {
+            font-family: 'Gaegu', cursive;
+        }
+
+        /* Custom Soft Shadows and Gradients */
+        .btn-bounce {
+            transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.15s ease;
+        }
+        .btn-bounce:active {
+            transform: scale(0.95) translateY(4px);
+        }
+
+        .bg-pattern {
+            background-color: #fdf6e7;
+            background-image: 
+                radial-gradient(#e07a5f 1.8px, transparent 1.8px), 
+                radial-gradient(#d4a373 1.8px, #fdf6e7 1.8px);
+            background-size: 50px 50px;
+            background-position: 0 0, 25px 25px;
+        }
+
+        /* Glow effects for target letter */
+        @keyframes pulse-glow {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.8)); }
+            50% { transform: scale(1.15); filter: drop-shadow(0 0 18px rgba(234, 179, 8, 1)); }
+        }
+        .active-target-letter {
+            animation: pulse-glow 1.2s infinite ease-in-out;
+        }
+
+        /* Floating balloon wiggle */
+        @keyframes sway {
+            0%, 100% { transform: rotate(-3deg); }
+            50% { transform: rotate(3deg); }
+        }
+        .sway-anim {
+            animation: sway 2s ease-in-out infinite;
+        }
+
+        /* Video mirrored for natural mirror camera interaction */
+        .mirror-mode {
+            transform: scaleX(-1);
+        }
+
+        /* Dynamic Game Background styling for responsiveness */
+        .game-bg-cover {
+            background-size: cover !important;
+            background-position: center center !important;
+            background-repeat: no-repeat !important;
+        }
+
+        /* Pseudo Fullscreen fallback for iframe or browser restriction */
+        .pseudo-fullscreen-app {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999 !important;
+            background-color: #fefce8 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+
+        .pseudo-fullscreen-game {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 9999 !important;
+            border-radius: 0 !important;
+            max-width: 100vw !important;
+            max-height: 100vh !important;
+            height: 100vh !important;
+            width: 100vw !important;
+            border: none !important;
+        }
+    </style>
+</head>
+<body class="bg-pattern min-h-screen text-slate-800 flex flex-col justify-between overflow-x-hidden">
+
+    <!-- Navigation / Top Header -->
+    <header class="w-full bg-white/80 backdrop-blur-md border-b-4 border-amber-400 py-3 px-6 flex justify-between items-center shadow-md z-30 sticky top-0">
+        <div class="flex items-center gap-3 cursor-pointer" onclick="switchScreen('settings')">
+            <div class="w-12 h-12 bg-amber-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg transform -rotate-6">
+                🍂
+            </div>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-extrabold text-amber-800 tracking-wide drop-shadow-sm">한글 팡팡!</h1>
+                <p class="text-xs text-amber-700 font-bold hidden sm:block">가을 한옥 마을에서 즐기는 손 놀이</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="toggleFullScreen()" id="fullscreen-btn" class="bg-sky-100 hover:bg-sky-200 text-sky-700 px-4 py-2 rounded-2xl border-2 border-sky-300 text-sm font-bold flex items-center gap-2 btn-bounce">
+                <i class="fa-solid fa-expand text-lg" id="fullscreen-icon"></i>
+                <span class="hidden md:inline" id="fullscreen-text">전체화면</span>
+            </button>
+            <button onclick="toggleAudioMute()" id="mute-btn" class="bg-amber-100 hover:bg-amber-200 text-amber-700 px-4 py-2 rounded-2xl border-2 border-amber-300 text-sm font-bold flex items-center gap-2 btn-bounce">
+                <i class="fa-solid fa-volume-high text-lg" id="mute-icon"></i>
+                <span class="hidden md:inline">소리 켬</span>
+            </button>
+            <button onclick="openAdminModal()" class="bg-purple-100 hover:bg-purple-200 text-purple-700 px-4 py-2 rounded-2xl border-2 border-purple-300 text-sm font-bold flex items-center gap-2 btn-bounce">
+                <i class="fa-solid fa-gear text-lg"></i>
+                <span class="hidden md:inline">관리자</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-grow flex items-center justify-center p-2 sm:p-4 relative">
+
+        <!-- SCREEN 1: Game Settings / Start Screen -->
+        <section id="screen-settings" class="w-full max-w-2xl bg-white/95 border-4 border-amber-300 rounded-3xl p-6 md:p-8 shadow-2xl relative text-center my-auto transition-all duration-300">
+            <div class="absolute -top-10 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-4 border-amber-600 font-black px-6 py-2 rounded-full text-xl shadow-lg flex items-center gap-2">
+                <span>🍁</span> 가을 한옥 한글 모험 <span>🍂</span>
+            </div>
+
+            <p class="mt-4 text-amber-900/80 text-lg md:text-xl font-bold">고즈넉한 가을 한옥에서 정답 글자 풍선을 터뜨려봐요!</p>
+
+            <!-- Option 1: Word Length Selection -->
+            <div class="mt-6 text-left">
+                <label class="block text-amber-800 text-lg md:text-xl font-bold mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-font text-pink-500"></i> 도전할 글자 수 선택
+                </label>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="length-selector">
+                    <button data-len="2" onclick="selectWordLength('2')" class="opt-len bg-pink-500 text-white border-4 border-pink-600 p-3 rounded-2xl text-xl font-bold btn-bounce shadow-md">2글자</button>
+                    <button data-len="3" onclick="selectWordLength('3')" class="opt-len bg-gray-100 hover:bg-pink-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">3글자</button>
+                    <button data-len="4" onclick="selectWordLength('4')" class="opt-len bg-gray-100 hover:bg-pink-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">4글자</button>
+                    <button data-len="all" onclick="selectWordLength('all')" class="opt-len bg-gray-100 hover:bg-pink-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">전체</button>
+                </div>
+            </div>
+
+            <!-- Option 2: Game Duration Selection -->
+            <div class="mt-6 text-left">
+                <label class="block text-amber-800 text-lg md:text-xl font-bold mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-stopwatch text-sky-500"></i> 게임 시간 선택
+                </label>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="time-selector">
+                    <button data-time="30" onclick="selectGameTime(30)" class="opt-time bg-gray-100 hover:bg-sky-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">30초</button>
+                    <button data-time="60" onclick="selectGameTime(60)" class="opt-time bg-sky-500 text-white border-4 border-sky-600 p-3 rounded-2xl text-xl font-bold btn-bounce shadow-md">1분</button>
+                    <button data-time="120" onclick="selectGameTime(120)" class="opt-time bg-gray-100 hover:bg-sky-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">2분</button>
+                    <button data-time="180" onclick="selectGameTime(180)" class="opt-time bg-gray-100 hover:bg-sky-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">3분</button>
+                </div>
+            </div>
+
+            <!-- Option 3: Balloon Speed Selection -->
+            <div class="mt-6 text-left">
+                <label class="block text-amber-800 text-lg md:text-xl font-bold mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-gauge-high text-purple-500"></i> 글자 낙하 속도 선택
+                </label>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="speed-selector">
+                    <button data-speed="1.5" onclick="selectGameSpeed(1.5)" class="opt-speed bg-purple-500 text-white border-4 border-purple-600 p-3 rounded-2xl text-xl font-bold btn-bounce shadow-md">천천히</button>
+                    <button data-speed="2.5" onclick="selectGameSpeed(2.5)" class="opt-speed bg-gray-100 hover:bg-purple-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">보통</button>
+                    <button data-speed="4.0" onclick="selectGameSpeed(4.0)" class="opt-speed bg-gray-100 hover:bg-purple-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">빠르게</button>
+                    <button data-speed="6.0" onclick="selectGameSpeed(6.0)" class="opt-speed bg-gray-100 hover:bg-purple-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce">아주 빠르게</button>
+                </div>
+            </div>
+
+            <!-- Option 4: Quick Background Image Upload -->
+            <div class="hidden mt-6 text-left bg-amber-50/80 p-4 rounded-2xl border-2 border-amber-200">
+                <label class="block text-amber-900 text-lg md:text-xl font-bold mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-image text-emerald-600"></i> 나만의 배경 이미지 설정
+                </label>
+                <p class="text-xs text-amber-700 mb-3">내 기기에 있는 이미지(사진, 그림)를 게임 전체 배경으로 직접 사용할 수 있어요.</p>
+                <div class="flex flex-col sm:flex-row gap-3 items-center">
+                    <input type="file" id="direct-bg-file" accept="image/*" onchange="handleDirectBgUpload(event)" class="hidden">
+                    <button onclick="document.getElementById('direct-bg-file').click()" class="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white border-b-4 border-emerald-700 px-5 py-2.5 rounded-2xl font-bold text-base btn-bounce shadow flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-arrow-up text-lg"></i>
+                        <span>배경 이미지 업로드</span>
+                    </button>
+                    <button onclick="resetToDefaultBg()" class="w-full sm:w-auto bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2.5 rounded-2xl font-bold text-sm btn-bounce flex items-center justify-center gap-1">
+                        <i class="fa-solid fa-rotate-left"></i> 기본 배경으로 변경
+                    </button>
+                    <span id="bg-upload-status" class="text-xs font-bold text-emerald-700 hidden sm:inline-block"></span>
+                </div>
+            </div>
+
+            <!-- Start Action Button -->
+            <div class="mt-8 flex flex-col sm:flex-row gap-4">
+                <button onclick="goToCameraCheck()" class="flex-1 bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 text-white border-b-8 border-emerald-700 py-4 px-6 rounded-3xl text-2xl font-black shadow-xl btn-bounce flex items-center justify-center gap-3">
+                    <i class="fa-solid fa-video text-3xl"></i>
+                    <span>카메라 점검 및 시작하기</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- SCREEN 2: Camera & Hand Calibration Check Screen -->
+        <section id="screen-camera-check" class="hidden w-full max-w-3xl bg-white/95 border-4 border-yellow-300 rounded-3xl p-6 shadow-2xl relative text-center my-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-extrabold text-amber-800 flex items-center gap-2">
+                    <i class="fa-solid fa-hand text-yellow-500"></i> 손 인식 점검
+                </h2>
+                <button onclick="switchScreen('settings')" class="text-gray-400 hover:text-gray-600 text-2xl">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Status Indicator Banner -->
+            <div id="hand-status-banner" class="bg-amber-100 border-2 border-amber-300 text-amber-800 p-3 rounded-2xl text-lg font-bold mb-4 flex items-center justify-center gap-2 transition-colors duration-300">
+                <i class="fa-solid fa-spinner fa-spin text-xl" id="status-spinner"></i>
+                <span id="hand-status-text">카메라 연결 및 손 인식 준비 중...</span>
+            </div>
+
+            <!-- Webcam Preview Box -->
+            <div class="relative w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-inner border-4 border-amber-200">
+                <video id="webcam-preview" class="hidden" playsinline></video>
+                <canvas id="camera-check-canvas" class="w-full h-full mirror-mode object-cover"></canvas>
+                
+                <!-- Helper overlay guide -->
+                <div class="absolute inset-0 border-4 border-dashed border-white/40 rounded-2xl pointer-events-none flex items-center justify-center">
+                    <p class="text-white/70 text-lg bg-black/40 px-4 py-2 rounded-full">카메라를 향해 손바닥을 보여주세요 👋</p>
+                </div>
+            </div>
+
+            <div class="mt-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <!-- Fallback info -->
+                <button onclick="enableMouseTouchFallback()" class="text-xs text-slate-500 hover:text-slate-800 underline flex items-center gap-1">
+                    <i class="fa-solid fa-mouse-pointer"></i> 카메라 제한 시 마우스/터치 모드로 대체
+                </button>
+
+                <button id="start-game-btn" disabled onclick="startGame()" class="w-full sm:w-auto min-w-[200px] bg-gray-300 text-gray-500 border-b-8 border-gray-400 cursor-not-allowed py-3 px-8 rounded-2xl text-2xl font-black shadow-lg transition-all duration-300 flex items-center justify-center gap-3">
+                    <span>게임 시작!</span>
+                    <i class="fa-solid fa-circle-play text-2xl"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- SCREEN 3: Main Game Gameplay Screen -->
+        <section id="screen-game" class="hidden w-full max-w-5xl h-[85vh] bg-sky-100/90 border-4 border-sky-300 rounded-3xl p-4 shadow-2xl relative flex flex-col overflow-hidden">
+            
+            <!-- Game HUD Top Bar -->
+            <div class="bg-white/90 border-2 border-sky-200 rounded-2xl p-3 shadow-md flex flex-wrap items-center justify-between gap-2 z-20">
+                <!-- Timer -->
+                <div class="flex items-center gap-2 bg-amber-100 border border-amber-300 px-4 py-1.5 rounded-xl text-amber-900 font-extrabold text-xl">
+                    <i class="fa-solid fa-clock text-amber-500 animate-pulse"></i>
+                    <span id="game-timer">01:00</span>
+                </div>
+
+                <!-- Word Display Cards Target -->
+                <div class="flex items-center gap-2 my-1" id="word-target-cards">
+                    <!-- Dynamic Word Cards Inserted via JS -->
+                </div>
+
+                <!-- Score / Solved count -->
+                <div class="flex items-center gap-2 bg-emerald-100 border border-emerald-300 px-4 py-1.5 rounded-xl text-emerald-900 font-extrabold text-xl">
+                    <i class="fa-solid fa-star text-yellow-500"></i>
+                    <span>맞힌 단어: <span id="game-score" class="text-2xl text-emerald-600">0</span>개</span>
+                </div>
+            </div>
+
+            <!-- Game World Canvas Area -->
+            <div id="game-arena" class="relative flex-grow w-full h-full mt-2 rounded-2xl overflow-hidden border-2 border-sky-200 shadow-inner game-bg-cover transition-all duration-500">
+                <!-- Hidden Video Stream for Detection -->
+                <video id="game-webcam" class="hidden" playsinline></video>
+                
+                <!-- Main Game Render Canvas -->
+                <canvas id="game-canvas" class="w-full h-full block cursor-crosshair"></canvas>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL 1: Admin Password Entry -->
+    <div id="modal-admin-pass" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white border-4 border-purple-400 rounded-3xl p-6 w-full max-w-md shadow-2xl text-center">
+            <h3 class="text-2xl font-extrabold text-purple-900 mb-2 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-lock"></i> 관리자 확인
+            </h3>
+            <p class="text-gray-600 mb-4 text-sm">보호자 및 관리자용 화면입니다.<br>비밀번호를 입력하세요. (기본: <span class="font-bold text-purple-600">1234</span>)</p>
+            <input type="password" id="admin-pass-input" placeholder="비밀번호 4자리" maxlength="10" class="w-full text-center text-2xl font-bold p-3 border-2 border-purple-200 rounded-xl mb-4 focus:outline-none focus:border-purple-500">
+            <div class="flex gap-3">
+                <button onclick="closeAdminModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 rounded-xl font-bold btn-bounce">취소</button>
+                <button onclick="verifyAdminPassword()" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-xl font-bold btn-bounce shadow-md">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 4: Admin Dashboard Screen -->
+    <section id="screen-admin" class="hidden w-full max-w-4xl bg-white/95 border-4 border-purple-300 rounded-3xl p-6 md:p-8 shadow-2xl my-auto mx-auto my-6">
+        <div class="flex justify-between items-center mb-6 pb-4 border-b-2 border-purple-100">
+            <div>
+                <h2 class="text-3xl font-extrabold text-purple-900 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-purple-500"></i> 단어 및 환경 설정 관리자 모드
+                </h2>
+                <p class="text-sm text-gray-500 mt-1">게임에 출제될 낱말 및 배경화면을 자유롭게 추가하거나 삭제할 수 있습니다.</p>
+            </div>
+            <button onclick="switchScreen('settings')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl text-lg font-bold btn-bounce">
+                <i class="fa-solid fa-house"></i> 메인으로
+            </button>
+        </div>
+
+        <!-- Add Word Form -->
+        <div class="bg-purple-50 p-4 rounded-2xl border-2 border-purple-200 mb-6 flex flex-col sm:flex-row gap-3">
+            <input type="text" id="new-word-input" placeholder="새 한글 단어 입력 (예: 호랑이)" class="flex-grow p-3 text-xl font-bold border-2 border-purple-300 rounded-xl focus:outline-none focus:border-purple-600">
+            <button onclick="addNewWord()" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl text-xl font-bold btn-bounce shadow-md flex items-center justify-center gap-2">
+                <i class="fa-solid fa-plus"></i> 단어 추가
+            </button>
+        </div>
+
+        <!-- Admin Section: Game Background Theme Setting -->
+        <div class="bg-amber-50 p-4 rounded-2xl border-2 border-amber-200 mb-6">
+            <h3 class="text-lg font-bold text-amber-900 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-image text-amber-600"></i> 게임 배경화면 테마 및 이미지 설정
+            </h3>
+            <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 mb-4">
+                <button onclick="setGameTheme('hanok')" class="theme-preset-btn p-3 rounded-xl border-2 border-amber-500 font-bold text-sm bg-gradient-to-b from-amber-200 to-orange-100 text-amber-900 shadow-md hover:scale-105 transition-transform">🍂 가을 한옥 (기본)</button>
+                <button onclick="setGameTheme('sky')" class="theme-preset-btn p-3 rounded-xl border-2 border-amber-300 font-bold text-sm bg-gradient-to-b from-sky-200 to-amber-50 text-sky-900 shadow-sm hover:scale-105 transition-transform">구름 하늘</button>
+                <button onclick="setGameTheme('forest')" class="theme-preset-btn p-3 rounded-xl border-2 border-amber-300 font-bold text-sm bg-gradient-to-b from-emerald-200 to-teal-50 text-emerald-900 shadow-sm hover:scale-105 transition-transform">초록 숲속</button>
+                <button onclick="setGameTheme('pink')" class="theme-preset-btn p-3 rounded-xl border-2 border-amber-300 font-bold text-sm bg-gradient-to-b from-pink-200 to-rose-50 text-rose-900 shadow-sm hover:scale-105 transition-transform">달콤 핑크</button>
+                <button onclick="setGameTheme('night')" class="theme-preset-btn p-3 rounded-xl border-2 border-amber-300 font-bold text-sm bg-gradient-to-b from-indigo-900 to-slate-800 text-white shadow-sm hover:scale-105 transition-transform">밤하늘 별나라</button>
+                <button onclick="setGameTheme('sunset')" class="theme-preset-btn p-3 rounded-xl border-2 border-amber-300 font-bold text-sm bg-gradient-to-b from-orange-200 to-amber-100 text-amber-900 shadow-sm hover:scale-105 transition-transform">노을 동산</button>
+            </div>
+            
+            <div class="space-y-3">
+                <!-- Direct File Upload Option for Admin -->
+                <div class="flex flex-col sm:flex-row gap-2 items-center bg-white p-3 rounded-xl border border-amber-200">
+                    <label for="admin-bg-file" class="text-sm font-bold text-amber-900 min-w-[120px] flex items-center gap-1">
+                        <i class="fa-solid fa-file-image text-emerald-600"></i> 배경 이미지 업로드:
+                    </label>
+                    <input type="file" id="admin-bg-file" accept="image/*" onchange="uploadCustomBgFile(event)" class="flex-grow text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500 file:text-white hover:file:bg-emerald-600 cursor-pointer">
+                </div>
+                
+                <!-- URL Input Option -->
+                <div class="flex flex-col sm:flex-row gap-2 items-center">
+                    <input type="text" id="bg-url-input" placeholder="직접 이미지 URL 입력 (예: https://example.com/bg.jpg)" class="flex-grow p-2.5 border-2 border-amber-300 rounded-xl text-sm focus:outline-none focus:border-amber-600 bg-white">
+                    <button onclick="applyCustomBgUrl()" class="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold btn-bounce shadow flex items-center justify-center gap-1">
+                        <i class="fa-solid fa-link"></i> URL 적용
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Registered Word Categories Tabs / Filter -->
+        <div class="flex flex-wrap gap-2 mb-4">
+            <button onclick="filterAdminWords('all')" class="admin-tab active bg-purple-600 text-white px-4 py-1.5 rounded-full text-sm font-bold">전체 (<span id="count-all">0</span>)</button>
+            <button onclick="filterAdminWords('2')" class="admin-tab bg-gray-200 text-gray-700 px-4 py-1.5 rounded-full text-sm font-bold">2글자 (<span id="count-2">0</span>)</button>
+            <button onclick="filterAdminWords('3')" class="admin-tab bg-gray-200 text-gray-700 px-4 py-1.5 rounded-full text-sm font-bold">3글자 (<span id="count-3">0</span>)</button>
+            <button onclick="filterAdminWords('4')" class="admin-tab bg-gray-200 text-gray-700 px-4 py-1.5 rounded-full text-sm font-bold">4글자+ (<span id="count-4">0</span>)</button>
+            <button onclick="resetDefaultWords()" class="ml-auto text-xs text-red-500 hover:underline flex items-center gap-1">
+                <i class="fa-solid fa-rotate-left"></i> 기본 단어로 복원
+            </button>
+        </div>
+
+        <!-- Word Cards Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-96 overflow-y-auto p-2 bg-gray-50 rounded-2xl border border-gray-200" id="admin-word-grid">
+            <!-- Dynamic Word Badges Output JS -->
+        </div>
+    </section>
+
+    <!-- MODAL 2: Game Over Result Modal -->
+    <div id="modal-game-over" class="hidden fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white border-4 border-yellow-400 rounded-3xl p-8 w-full max-w-md shadow-2xl text-center transform transition-all scale-100">
+            <div class="text-6xl mb-2 animate-bounce">🎉</div>
+            <h2 class="text-3xl font-black text-amber-800 mb-2">시간이 다 되었어요!</h2>
+            <p class="text-gray-600 text-lg mb-6">참 잘했어요! 오늘 완선한 단어는?</p>
+
+            <div class="bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-4 mb-6">
+                <span class="text-sm font-bold text-amber-700 block mb-1">총 맞힌 단어</span>
+                <span class="text-5xl font-black text-pink-500" id="final-word-count">0</span>
+                <span class="text-xl font-bold text-gray-700"> 개</span>
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <button onclick="replayGame()" class="w-full bg-gradient-to-r from-green-400 to-emerald-500 text-white border-b-4 border-emerald-700 py-3 rounded-2xl text-xl font-bold btn-bounce shadow-md">
+                    <i class="fa-solid fa-rotate-right"></i> 다시 하기
+                </button>
+                <button onclick="switchScreen('settings')" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-2xl text-xl font-bold btn-bounce">
+                    <i class="fa-solid fa-house"></i> 메인 화면으로
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ==========================================================================
+           0. BROWSER CACHE & DATABASE PERSISTENCE CONTROLLER (IndexedDB + Storage)
+           ========================================================================== */
+        const DB_NAME = 'hangul_pang_db';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'app_data';
+
+        function openHangulDB() {
+            return new Promise((resolve) => {
+                if (!window.indexedDB) {
+                    resolve(null);
+                    return;
+                }
+                try {
+                    const req = indexedDB.open(DB_NAME, DB_VERSION);
+                    req.onupgradeneeded = function(e) {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            db.createObjectStore(STORE_NAME);
+                        }
+                    };
+                    req.onsuccess = function(e) {
+                        resolve(e.target.result);
+                    };
+                    req.onerror = function() {
+                        resolve(null);
+                    };
+                } catch(e) {
+                    resolve(null);
+                }
+            });
+        }
+
+        async function saveToCacheDB(key, val) {
+            // 1. LocalStorage 동기식 보관 (가능한 범위 내)
+            try {
+                if (typeof val === 'string') {
+                    localStorage.setItem(key, val);
+                } else {
+                    localStorage.setItem(key, JSON.stringify(val));
+                }
+            } catch(e) {
+                console.warn('LocalStorage 용량 초과 또는 제한, IndexedDB 영구 캐시에 안전하게 보관합니다.', e);
+            }
+
+            // 2. IndexedDB 영구 브라우저 데이터베이스에 보관 (대용량 이미지 및 데이터 손실 방지)
+            try {
+                const db = await openHangulDB();
+                if (db) {
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    tx.objectStore(STORE_NAME).put(val, key);
+                }
+            } catch(e) {
+                console.warn('IndexedDB 저장 오류:', e);
+            }
+        }
+
+        async function getFromCacheDB(key, defaultVal = null) {
+            // 1. IndexedDB 영구 브라우저 데이터베이스 조회
+            try {
+                const db = await openHangulDB();
+                if (db) {
+                    const idbVal = await new Promise((resolve) => {
+                        const tx = db.transaction(STORE_NAME, 'readonly');
+                        const req = tx.objectStore(STORE_NAME).get(key);
+                        req.onsuccess = function() {
+                            resolve(req.result !== undefined ? req.result : null);
+                        };
+                        req.onerror = function() {
+                            resolve(null);
+                        };
+                    });
+                    if (idbVal !== null && idbVal !== undefined) {
+                        return idbVal;
+                    }
+                }
+            } catch(e) {
+                console.warn('IndexedDB 조회 오류:', e);
+            }
+
+            // 2. LocalStorage 조회
+            try {
+                const lsVal = localStorage.getItem(key);
+                if (lsVal !== null) {
+                    try {
+                        return JSON.parse(lsVal);
+                    } catch(_) {
+                        return lsVal;
+                    }
+                }
+            } catch(e) {}
+
+            return defaultVal;
+        }
+
+        /* ==========================================================================
+           1. AUDIO ENGINE (Web Audio API Synthesizer & Speech Synthesis)
+           ========================================================================== */
+        let audioCtx = null;
+        let isAudioMuted = false;
+
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function toggleAudioMute(targetState = null) {
+            if (targetState !== null) {
+                isAudioMuted = targetState;
+            } else {
+                isAudioMuted = !isAudioMuted;
+            }
+            saveToCacheDB('hangul_pang_is_muted', isAudioMuted);
+            const icon = document.getElementById('mute-icon');
+            const btnText = document.querySelector('#mute-btn span');
+            if (isAudioMuted) {
+                icon.className = 'fa-solid fa-volume-xmark text-lg';
+                if (btnText) btnText.innerText = '음소거';
+            } else {
+                icon.className = 'fa-solid fa-volume-high text-lg';
+                if (btnText) btnText.innerText = '소리 켬';
+            }
+        }
+
+        // Web Audio Pop Sound effect
+        function playPopSound() {
+            if (isAudioMuted) return;
+            initAudioContext();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+
+            gain.gain.setValueAtTime(1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.08);
+        }
+
+        // Web Audio Wrong / Bouncy Sound
+        function playWrongSound() {
+            if (isAudioMuted) return;
+            initAudioContext();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(110, audioCtx.currentTime + 0.15);
+
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
+
+        // Web Audio Word Completed Fanfare Sound
+        function playSuccessSound() {
+            if (isAudioMuted) return;
+            initAudioContext();
+
+            const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+            notes.forEach((freq, idx) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+
+                const startTime = audioCtx.currentTime + (idx * 0.08);
+                gain.gain.setValueAtTime(0.6, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.25);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(startTime);
+                osc.stop(startTime + 0.25);
+            });
+        }
+
+        // Speech Synthesis TTS Engine for Korean Words
+        function speakKoreanWord(text) {
+            if (isAudioMuted || !('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel(); // stop current speeches
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ko-KR';
+            utterance.rate = 0.9; // clear, friendly pace for kids
+            utterance.pitch = 1.2; // bright pitch
+            window.speechSynthesis.speak(utterance);
+        }
+
+        /* ==========================================================================
+           2. DATA STORE & WORD LIST MANAGEMENT (LocalStorage & IndexedDB Cache)
+           ========================================================================== */
+        const DEFAULT_WORDS = [
+            "사과", "바나나", "호랑이", "비행기", "개구리", "코끼리", "나비", "토끼",
+            "자동차", "구름", "오리", "기린", "사자", "수박", "딸기", "하마",
+            "무지개", "해바라기", "아이스크림", "경찰차", "소방차", "고양이", "강아지", "피아노"
+        ];
+
+        let wordList = [];
+
+        async function loadWords() {
+            // 1. 동기식 즉시 로드 (LocalStorage)
+            const saved = localStorage.getItem('hangul_pang_words');
+            if (saved) {
+                try {
+                    wordList = JSON.parse(saved);
+                } catch(e) {
+                    wordList = [...DEFAULT_WORDS];
+                }
+            } else {
+                wordList = [...DEFAULT_WORDS];
+                saveWords();
+            }
+
+            // 2. 브라우저 캐시 / 영구 데이터베이스(IndexedDB) 비동기 동기화
+            const dbSaved = await getFromCacheDB('hangul_pang_words', null);
+            if (dbSaved && Array.isArray(dbSaved) && dbSaved.length > 0) {
+                wordList = dbSaved;
+                if (currentScreen === 'admin') {
+                    renderAdminWords();
+                }
+            }
+        }
+
+        function saveWords() {
+            saveToCacheDB('hangul_pang_words', wordList);
+        }
+
+        function resetDefaultWords() {
+            if (confirm("모든 단어를 기본 목록으로 초기화할까요?")) {
+                wordList = [...DEFAULT_WORDS];
+                saveWords();
+                renderAdminWords();
+            }
+        }
+
+        /* ==========================================================================
+           3. FULLSCREEN API CONTROLLER
+           ========================================================================== */
+        function toggleFullScreen() {
+            const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.body.classList.contains('pseudo-fullscreen-app'));
+            if (isFull) {
+                exitFullScreen();
+            } else {
+                enterFullScreen();
+            }
+        }
+
+        function enterFullScreen() {
+            const docEl = document.documentElement;
+            let req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
+
+            if (req && !document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement && !document.msFullscreenElement) {
+                req.call(docEl).then(() => {
+                    updateFullscreenButtonUI(true);
+                }).catch(err => {
+                    console.warn("Native fullscreen denied or restricted by iframe. Switching to Pseudo Fullscreen Mode:", err);
+                    enablePseudoFullScreen(true);
+                });
+            } else {
+                enablePseudoFullScreen(true);
+            }
+        }
+
+        function exitFullScreen() {
+            enablePseudoFullScreen(false);
+            if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+                if (exit) {
+                    exit.call(document).catch(err => console.warn("Exit Fullscreen error:", err));
+                }
+            }
+            updateFullscreenButtonUI(false);
+        }
+
+        function enablePseudoFullScreen(enable) {
+            const body = document.body;
+            const gameScreen = document.getElementById('screen-game');
+            if (enable) {
+                body.classList.add('pseudo-fullscreen-app');
+                if (gameScreen) gameScreen.classList.add('pseudo-fullscreen-game');
+            } else {
+                body.classList.remove('pseudo-fullscreen-app');
+                if (gameScreen) gameScreen.classList.remove('pseudo-fullscreen-game');
+            }
+            updateFullscreenButtonUI(enable);
+            setTimeout(resizeGameCanvas, 150);
+        }
+
+        function updateFullscreenButtonUI(isFull) {
+            const icon = document.getElementById('fullscreen-icon');
+            const text = document.getElementById('fullscreen-text');
+            if (icon) {
+                icon.className = isFull ? 'fa-solid fa-compress text-lg' : 'fa-solid fa-expand text-lg';
+            }
+            if (text) {
+                text.innerText = isFull ? '창모드' : '전체화면';
+            }
+        }
+
+        // Handle Escape Key or external exit from Fullscreen
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                exitFullScreen();
+            }
+        });
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+        function handleFullscreenChange() {
+            const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+            updateFullscreenButtonUI(isFull);
+            if (!isFull && !document.body.classList.contains('pseudo-fullscreen-app')) {
+                enablePseudoFullScreen(false);
+            }
+            if (currentScreen === 'game') {
+                setTimeout(resizeGameCanvas, 100);
+            }
+        }
+
+        /* ==========================================================================
+           4. APP NAVIGATION & UI STATE
+           ========================================================================== */
+        let selectedWordLength = '2'; // '2', '3', '4', 'all'
+        let selectedGameTime = 60; // seconds
+        let selectedGameSpeed = 1.5; // 1.5 = 천천히
+        let currentGameBg = 'hanok'; // Default theme: Autumn Hanok
+        let customBgUrl = 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png';
+        let currentScreen = 'settings';
+
+        function switchScreen(screenName) {
+            currentScreen = screenName;
+            document.getElementById('screen-settings').classList.add('hidden');
+            document.getElementById('screen-camera-check').classList.add('hidden');
+            document.getElementById('screen-game').classList.add('hidden');
+            document.getElementById('screen-admin').classList.add('hidden');
+            document.getElementById('modal-admin-pass').classList.add('hidden');
+            document.getElementById('modal-game-over').classList.add('hidden');
+
+            // Stop webcam if leaving active camera screens
+            if (screenName !== 'camera-check' && screenName !== 'game') {
+                stopCameraStream();
+            }
+
+            if (screenName === 'settings') {
+                exitFullScreen(); // Exit fullscreen when going to main screen
+                document.getElementById('screen-settings').classList.remove('hidden');
+            } else if (screenName === 'camera-check') {
+                document.getElementById('screen-camera-check').classList.remove('hidden');
+            } else if (screenName === 'game') {
+                document.getElementById('screen-game').classList.remove('hidden');
+            } else if (screenName === 'admin') {
+                exitFullScreen(); // Exit fullscreen when in admin screen
+                document.getElementById('screen-admin').classList.remove('hidden');
+                renderAdminWords();
+            }
+        }
+
+        function selectWordLength(len) {
+            selectedWordLength = len;
+            saveToCacheDB('hangul_pang_word_length', len);
+            document.querySelectorAll('.opt-len').forEach(btn => {
+                if (btn.dataset.len === len) {
+                    btn.className = 'opt-len bg-pink-500 text-white border-4 border-pink-600 p-3 rounded-2xl text-xl font-bold btn-bounce shadow-md';
+                } else {
+                    btn.className = 'opt-len bg-gray-100 hover:bg-pink-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce';
+                }
+            });
+        }
+
+        function selectGameTime(seconds) {
+            selectedGameTime = parseInt(seconds);
+            saveToCacheDB('hangul_pang_game_time', selectedGameTime);
+            document.querySelectorAll('.opt-time').forEach(btn => {
+                if (parseInt(btn.dataset.time) === selectedGameTime) {
+                    btn.className = 'opt-time bg-sky-500 text-white border-4 border-sky-600 p-3 rounded-2xl text-xl font-bold btn-bounce shadow-md';
+                } else {
+                    btn.className = 'opt-time bg-gray-100 hover:bg-sky-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce';
+                }
+            });
+        }
+
+        function selectGameSpeed(speedVal) {
+            selectedGameSpeed = parseFloat(speedVal);
+            saveToCacheDB('hangul_pang_game_speed', selectedGameSpeed);
+            document.querySelectorAll('.opt-speed').forEach(btn => {
+                if (parseFloat(btn.dataset.speed) === selectedGameSpeed) {
+                    btn.className = 'opt-speed bg-purple-500 text-white border-4 border-purple-600 p-3 rounded-2xl text-xl font-bold btn-bounce shadow-md';
+                } else {
+                    btn.className = 'opt-speed bg-gray-100 hover:bg-purple-100 text-gray-700 border-4 border-gray-200 p-3 rounded-2xl text-xl font-bold btn-bounce';
+                }
+            });
+        }
+
+        /* ==========================================================================
+           5. MEDIAPIPE HANDS & CAMERA TRACKING CONTROLLER
+           ========================================================================== */
+        let handsDetector = null;
+        let cameraUtilsInstance = null;
+        let activeVideoStream = null;
+        let handPosition = { x: -1, y: -1, detected: false }; // Normalized 0..1
+        let isFallbackMouseMode = false;
+
+        function initMediaPipeHands() {
+            if (handsDetector) return;
+
+            handsDetector = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            handsDetector.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            handsDetector.onResults(onHandResults);
+        }
+
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                // Landmark 8: INDEX_FINGER_TIP
+                const indexTip = landmarks[8];
+                // Note: video stream is mirrored for screen output, so mirror X coordinate
+                handPosition.x = 1 - indexTip.x;
+                handPosition.y = indexTip.y;
+                handPosition.detected = true;
+            } else {
+                handPosition.detected = false;
+            }
+
+            if (currentScreen === 'camera-check') {
+                renderCameraCheckCanvas(results);
+            }
+        }
+
+        function goToCameraCheck() {
+            initAudioContext();
+            enterFullScreen(); // Trigger Fullscreen on button click
+            switchScreen('camera-check');
+            startCameraForCheck();
+        }
+
+        function startCameraForCheck() {
+            initMediaPipeHands();
+            const videoElement = document.getElementById('webcam-preview');
+            const statusBanner = document.getElementById('hand-status-banner');
+            const statusText = document.getElementById('hand-status-text');
+            const statusSpinner = document.getElementById('status-spinner');
+            const startBtn = document.getElementById('start-game-btn');
+
+            stopCameraStream();
+
+            statusText.innerText = "웹캠에 연결 중입니다...";
+            statusSpinner.className = "fa-solid fa-spinner fa-spin text-xl";
+
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                .then(stream => {
+                    activeVideoStream = stream;
+                    videoElement.srcObject = stream;
+
+                    const playPromise = videoElement.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(err => {
+                            if (err.name !== 'AbortError') {
+                                console.warn("Video play error:", err);
+                            }
+                        });
+                    }
+
+                    cameraUtilsInstance = new Camera(videoElement, {
+                        onFrame: async () => {
+                            if ((currentScreen === 'camera-check' || currentScreen === 'game') && handsDetector) {
+                                try {
+                                    await handsDetector.send({ image: videoElement });
+                                } catch(e) {
+                                    console.warn("Hands detection frame error:", e);
+                                }
+                            }
+                        },
+                        width: 640,
+                        height: 480
+                    });
+                    cameraUtilsInstance.start();
+                })
+                .catch(err => {
+                    console.warn("Camera access failed:", err);
+                    enableMouseTouchFallback("카메라를 사용할 수 없어 마우스/터치 모드로 전환됩니다.");
+                });
+            } else {
+                enableMouseTouchFallback("브라우저에서 카메라를 지원하지 않습니다.");
+            }
+        }
+
+        function enableMouseTouchFallback(msg) {
+            isFallbackMouseMode = true;
+            const statusBanner = document.getElementById('hand-status-banner');
+            const statusText = document.getElementById('hand-status-text');
+            const statusSpinner = document.getElementById('status-spinner');
+            const startBtn = document.getElementById('start-game-btn');
+
+            statusBanner.className = "bg-green-100 border-2 border-green-300 text-green-800 p-3 rounded-2xl text-lg font-bold mb-4 flex items-center justify-center gap-2";
+            statusSpinner.className = "fa-solid fa-hand-pointer text-xl text-green-600";
+            statusText.innerText = msg || "🖐️ 마우스 및 터치 모드로 사용할 수 있어요!";
+
+            startBtn.disabled = false;
+            startBtn.className = "w-full sm:w-auto min-w-[200px] bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-500 hover:to-green-600 text-white border-b-8 border-green-700 py-3 px-8 rounded-2xl text-2xl font-black shadow-lg btn-bounce flex items-center justify-center gap-3 cursor-pointer";
+        }
+
+        function stopCameraStream() {
+            if (cameraUtilsInstance) {
+                try { cameraUtilsInstance.stop(); } catch(e){}
+                cameraUtilsInstance = null;
+            }
+            if (activeVideoStream) {
+                activeVideoStream.getTracks().forEach(track => track.stop());
+                activeVideoStream = null;
+            }
+            const videoElement = document.getElementById('webcam-preview');
+            if (videoElement) {
+                videoElement.pause();
+                videoElement.srcObject = null;
+            }
+        }
+
+        function renderCameraCheckCanvas(results) {
+            const canvas = document.getElementById('camera-check-canvas');
+            const ctx = canvas.getContext('2d');
+            const video = document.getElementById('webcam-preview');
+
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (results.image) {
+                ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+            }
+
+            const statusBanner = document.getElementById('hand-status-banner');
+            const statusText = document.getElementById('hand-status-text');
+            const statusSpinner = document.getElementById('status-spinner');
+            const startBtn = document.getElementById('start-game-btn');
+
+            if (handPosition.detected) {
+                statusBanner.className = "bg-green-100 border-2 border-green-300 text-green-800 p-3 rounded-2xl text-lg font-bold mb-4 flex items-center justify-center gap-2";
+                statusSpinner.className = "fa-solid fa-circle-check text-xl text-green-600";
+                statusText.innerText = "🖐️ 손이 잘 보여요! [게임 시작] 버튼을 누르세요";
+
+                startBtn.disabled = false;
+                startBtn.className = "w-full sm:w-auto min-w-[200px] bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-500 hover:to-green-600 text-white border-b-8 border-green-700 py-3 px-8 rounded-2xl text-2xl font-black shadow-lg btn-bounce flex items-center justify-center gap-3 cursor-pointer";
+
+                const rawX = (1 - handPosition.x) * canvas.width;
+                const rawY = handPosition.y * canvas.height;
+
+                ctx.beginPath();
+                ctx.arc(rawX, rawY, 20, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(236, 72, 153, 0.8)";
+                ctx.fill();
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = "#ffffff";
+                ctx.stroke();
+
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "20px fontawesome";
+                ctx.fillText("★", rawX - 8, rawY + 7);
+            }
+            ctx.restore();
+        }
+
+        /* ==========================================================================
+           6. GAME ENGINE & FALLING BALLOONS LOGIC
+           ========================================================================== */
+        let gameCanvas = null;
+        let gameCtx = null;
+        let animationFrameId = null;
+
+        let gameWordsQueue = [];
+        let currentTargetWord = "";
+        let currentTargetIndex = 0;
+        let solvedWordsCount = 0;
+        let gameTimeRemaining = 60;
+        let gameTimerInterval = null;
+
+        let fallingBalloons = [];
+        let popParticles = [];
+
+        const BALLOON_COLORS = [
+            { bg: '#FFB7B2', border: '#E58882', text: '#5C2420' },
+            { bg: '#A2D2FF', border: '#6096BA', text: '#1D3557' },
+            { bg: '#B5EAD7', border: '#6FBA9B', text: '#154331' },
+            { bg: '#FFDAC1', border: '#D99B73', text: '#592E19' },
+            { bg: '#C7CEEA', border: '#8A95C9', text: '#2B2E4A' },
+            { bg: '#E2F0CB', border: '#92B558', text: '#2E4014' }
+        ];
+
+        const DISTRACTOR_LETTERS = ["가", "나", "다", "라", "마", "바", "사", "아", "자", "차", "카", "타", "파", "하", "구", "누", "두", "루", "무", "부", "수"];
+
+        function startGame() {
+            enterFullScreen(); // Ensure Fullscreen active
+            switchScreen('game');
+            applyGameBgToArena();
+
+            gameCanvas = document.getElementById('game-canvas');
+            gameCtx = gameCanvas.getContext('2d');
+
+            gameCanvas.onmousemove = (e) => {
+                const rect = gameCanvas.getBoundingClientRect();
+                handPosition.x = (e.clientX - rect.left) / rect.width;
+                handPosition.y = (e.clientY - rect.top) / rect.height;
+                handPosition.detected = true;
+            };
+            gameCanvas.ontouchmove = (e) => {
+                if (e.touches.length > 0) {
+                    const rect = gameCanvas.getBoundingClientRect();
+                    handPosition.x = (e.touches[0].clientX - rect.left) / rect.width;
+                    handPosition.y = (e.touches[0].clientY - rect.top) / rect.height;
+                    handPosition.detected = true;
+                }
+            };
+
+            let pool = wordList.filter(w => {
+                if (selectedWordLength === '2') return w.length === 2;
+                if (selectedWordLength === '3') return w.length === 3;
+                if (selectedWordLength === '4') return w.length >= 4;
+                return true;
+            });
+
+            if (pool.length === 0) pool = [...DEFAULT_WORDS];
+            
+            gameWordsQueue = pool.sort(() => Math.random() - 0.5);
+            solvedWordsCount = 0;
+            document.getElementById('game-score').innerText = solvedWordsCount;
+
+            gameTimeRemaining = selectedGameTime;
+            updateTimerDisplay();
+
+            if (gameTimerInterval) clearInterval(gameTimerInterval);
+            gameTimerInterval = setInterval(() => {
+                gameTimeRemaining--;
+                updateTimerDisplay();
+                if (gameTimeRemaining <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            loadNextTargetWord();
+
+            resizeGameCanvas();
+            window.addEventListener('resize', resizeGameCanvas);
+
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            gameLoop();
+        }
+
+        function resizeGameCanvas() {
+            if (!gameCanvas) return;
+            const container = gameCanvas.parentElement;
+            gameCanvas.width = container.clientWidth;
+            gameCanvas.height = container.clientHeight;
+        }
+
+        function updateTimerDisplay() {
+            const mins = Math.floor(gameTimeRemaining / 60).toString().padStart(2, '0');
+            const secs = (gameTimeRemaining % 60).toString().padStart(2, '0');
+            document.getElementById('game-timer').innerText = `${mins}:${secs}`;
+        }
+
+        function loadNextTargetWord() {
+            if (gameWordsQueue.length === 0) {
+                let pool = wordList.filter(w => {
+                    if (selectedWordLength === '2') return w.length === 2;
+                    if (selectedWordLength === '3') return w.length === 3;
+                    if (selectedWordLength === '4') return w.length >= 4;
+                    return true;
+                });
+                gameWordsQueue = pool.sort(() => Math.random() - 0.5);
+            }
+
+            currentTargetWord = gameWordsQueue.pop();
+            currentTargetIndex = 0;
+            fallingBalloons = [];
+
+            renderWordTargetCards();
+            speakKoreanWord(currentTargetWord);
+        }
+
+        function renderWordTargetCards() {
+            const container = document.getElementById('word-target-cards');
+            container.innerHTML = '';
+
+            for (let i = 0; i < currentTargetWord.length; i++) {
+                const letter = currentTargetWord[i];
+                const isSolved = i < currentTargetIndex;
+                const isCurrentTarget = i === currentTargetIndex;
+
+                const card = document.createElement('div');
+                if (isSolved) {
+                    card.className = "w-12 h-12 md:w-16 md:h-16 bg-green-500 text-white border-4 border-green-600 rounded-2xl flex items-center justify-center text-2xl md:text-3xl font-black shadow-md transition-all scale-100";
+                    card.innerText = letter;
+                } else if (isCurrentTarget) {
+                    card.className = "w-12 h-12 md:w-16 md:h-16 bg-yellow-400 text-amber-950 border-4 border-amber-500 rounded-2xl flex items-center justify-center text-2xl md:text-3xl font-black shadow-lg active-target-letter";
+                    card.innerText = letter;
+                } else {
+                    card.className = "w-12 h-12 md:w-16 md:h-16 bg-gray-200 text-gray-500 border-4 border-gray-300 rounded-2xl flex items-center justify-center text-2xl md:text-3xl font-black opacity-80";
+                    card.innerText = letter;
+                }
+                container.appendChild(card);
+            }
+        }
+
+        function spawnBalloon() {
+            if (!gameCanvas) return;
+
+            const radius = Math.min(gameCanvas.width, gameCanvas.height) * 0.08 + 12;
+            const requiredChar = currentTargetWord[currentTargetIndex];
+            
+            const hasRequiredCharOnScreen = fallingBalloons.some(b => b.char === requiredChar);
+
+            let char = "";
+
+            if (!hasRequiredCharOnScreen) {
+                char = requiredChar;
+            } else {
+                const possibleChars = [];
+
+                for (let i = 0; i < currentTargetWord.length; i++) {
+                    const l = currentTargetWord[i];
+                    if (!fallingBalloons.some(b => b.char === l)) {
+                        possibleChars.push(l);
+                    }
+                }
+
+                DISTRACTOR_LETTERS.forEach(l => {
+                    if (!fallingBalloons.some(b => b.char === l)) {
+                        possibleChars.push(l);
+                    }
+                });
+
+                if (possibleChars.length === 0) return;
+                char = possibleChars[Math.floor(Math.random() * possibleChars.length)];
+            }
+
+            if (fallingBalloons.some(b => b.char === char)) return;
+
+            let bestX = -1;
+            const spawnY = -radius - 15;
+            
+            for (let attempts = 0; attempts < 25; attempts++) {
+                const candX = Math.random() * (gameCanvas.width - radius * 2.5) + radius * 1.25;
+                let overlap = false;
+
+                for (let b of fallingBalloons) {
+                    const dx = Math.abs(candX - b.x);
+                    const dy = Math.abs(spawnY - b.y);
+                    if (dx < radius * 2.4 && dy < radius * 2.4) {
+                        overlap = true;
+                        break;
+                    }
+                }
+
+                if (!overlap) {
+                    bestX = candX;
+                    break;
+                }
+            }
+
+            if (bestX < 0) return;
+
+            const baseSpeed = Math.random() * 0.3 + 0.5;
+            const speed = baseSpeed * selectedGameSpeed;
+            const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
+
+            fallingBalloons.push({
+                char,
+                x: bestX,
+                y: spawnY,
+                radius,
+                speed,
+                color,
+                wobbleOffset: Math.random() * Math.PI * 2
+            });
+        }
+
+        function gameLoop() {
+            if (currentScreen !== 'game') return;
+
+            gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            if (fallingBalloons.length < 4 && Math.random() < 0.04) {
+                spawnBalloon();
+            }
+
+            // Repulsion physics pass
+            for (let i = 0; i < fallingBalloons.length; i++) {
+                for (let j = i + 1; j < fallingBalloons.length; j++) {
+                    const b1 = fallingBalloons[i];
+                    const b2 = fallingBalloons[j];
+                    const dx = b2.x - b1.x;
+                    const dy = b2.y - b1.y;
+                    const dist = Math.hypot(dx, dy);
+                    const minDist = b1.radius + b2.radius + 10;
+
+                    if (dist < minDist && dist > 0) {
+                        const overlap = (minDist - dist) / 2;
+                        const pushX = (dx / dist) * overlap * 0.1;
+                        b1.x -= pushX;
+                        b2.x += pushX;
+                        b1.x = Math.max(b1.radius, Math.min(gameCanvas.width - b1.radius, b1.x));
+                        b2.x = Math.max(b2.radius, Math.min(gameCanvas.width - b2.radius, b2.x));
+                    }
+                }
+            }
+
+            const handX = handPosition.x * gameCanvas.width;
+            const handY = handPosition.y * gameCanvas.height;
+
+            for (let i = fallingBalloons.length - 1; i >= 0; i--) {
+                const b = fallingBalloons[i];
+
+                b.y += b.speed;
+                b.wobbleOffset += 0.02;
+                const swayX = b.x + Math.sin(b.wobbleOffset) * 10;
+
+                // Draw String
+                gameCtx.beginPath();
+                gameCtx.moveTo(swayX, b.y + b.radius);
+                gameCtx.quadraticCurveTo(swayX + 5, b.y + b.radius + 15, swayX, b.y + b.radius + 30);
+                gameCtx.strokeStyle = "#94a3b8";
+                gameCtx.lineWidth = 2.5;
+                gameCtx.stroke();
+
+                // Draw Body
+                gameCtx.beginPath();
+                gameCtx.arc(swayX, b.y, b.radius, 0, Math.PI * 2);
+                gameCtx.fillStyle = b.color.bg;
+                gameCtx.fill();
+                gameCtx.lineWidth = 4;
+                gameCtx.strokeStyle = b.color.border;
+                gameCtx.stroke();
+
+                // Draw Highlight
+                gameCtx.beginPath();
+                gameCtx.arc(swayX - b.radius * 0.35, b.y - b.radius * 0.35, b.radius * 0.25, 0, Math.PI * 2);
+                gameCtx.fillStyle = "rgba(255, 255, 255, 0.4)";
+                gameCtx.fill();
+
+                // Draw Text
+                gameCtx.fillStyle = b.color.text;
+                gameCtx.font = `bold ${Math.floor(b.radius * 1.15)}px 'Jua', sans-serif`;
+                gameCtx.textAlign = 'center';
+                gameCtx.textBaseline = 'middle';
+                gameCtx.fillText(b.char, swayX, b.y + 2);
+
+                // Collision detection
+                if (handPosition.detected) {
+                    const dist = Math.hypot(handX - swayX, handY - b.y);
+                    if (dist < b.radius + 25) {
+                        handleBalloonHit(b, i, swayX, b.y);
+                        continue;
+                    }
+                }
+
+                if (b.y - b.radius > gameCanvas.height) {
+                    fallingBalloons.splice(i, 1);
+                }
+            }
+
+            // Draw Pop Particles
+            for (let i = popParticles.length - 1; i >= 0; i--) {
+                const p = popParticles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.03;
+
+                if (p.alpha <= 0) {
+                    popParticles.splice(i, 1);
+                    continue;
+                }
+
+                gameCtx.save();
+                gameCtx.globalAlpha = p.alpha;
+                gameCtx.beginPath();
+                gameCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                gameCtx.fillStyle = p.color;
+                gameCtx.fill();
+                gameCtx.restore();
+            }
+
+            // Draw Hand Pointer Cursor Overlay
+            if (handPosition.detected) {
+                gameCtx.save();
+                gameCtx.beginPath();
+                gameCtx.arc(handX, handY, 26, 0, Math.PI * 2);
+                gameCtx.fillStyle = "rgba(244, 114, 182, 0.4)";
+                gameCtx.fill();
+
+                gameCtx.beginPath();
+                gameCtx.arc(handX, handY, 16, 0, Math.PI * 2);
+                gameCtx.fillStyle = "#ec4899";
+                gameCtx.fill();
+                gameCtx.lineWidth = 3;
+                gameCtx.strokeStyle = "#ffffff";
+                gameCtx.stroke();
+
+                gameCtx.fillStyle = "#ffffff";
+                gameCtx.font = "14px fontawesome";
+                gameCtx.textAlign = 'center';
+                gameCtx.textBaseline = 'middle';
+                gameCtx.fillText("★", handX, handY);
+                gameCtx.restore();
+            }
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function handleBalloonHit(balloon, index, posX, posY) {
+            const requiredChar = currentTargetWord[currentTargetIndex];
+
+            createPopParticles(posX, posY, balloon.color.bg);
+
+            if (balloon.char === requiredChar) {
+                playPopSound();
+                fallingBalloons.splice(index, 1);
+                currentTargetIndex++;
+
+                renderWordTargetCards();
+
+                if (currentTargetIndex >= currentTargetWord.length) {
+                    solvedWordsCount++;
+                    document.getElementById('game-score').innerText = solvedWordsCount;
+
+                    playSuccessSound();
+                    confetti({
+                        particleCount: 70,
+                        spread: 60,
+                        origin: { y: 0.6 }
+                    });
+
+                    speakKoreanWord(`${currentTargetWord}! 참 잘했어요!`);
+
+                    setTimeout(() => {
+                        if (currentScreen === 'game') {
+                            loadNextTargetWord();
+                        }
+                    }, 1200);
+                }
+            } else {
+                playWrongSound();
+                balloon.y -= 30;
+                balloon.speed *= 0.8;
+            }
+        }
+
+        function createPopParticles(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 6 + 2;
+                popParticles.push({
+                    x,
+                    y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: Math.random() * 6 + 4,
+                    color,
+                    alpha: 1.0
+                });
+            }
+        }
+
+        function endGame() {
+            if (gameTimerInterval) clearInterval(gameTimerInterval);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            exitFullScreen(); // Exit Fullscreen mode when game finishes
+
+            document.getElementById('final-word-count').innerText = solvedWordsCount;
+            document.getElementById('modal-game-over').classList.remove('hidden');
+
+            confetti({
+                particleCount: 120,
+                spread: 100,
+                origin: { y: 0.5 }
+            });
+            speakKoreanWord(`우와! 총 ${solvedWordsCount}개 단어를 완성했어요!`);
+        }
+
+        function replayGame() {
+            document.getElementById('modal-game-over').classList.add('hidden');
+            startGame();
+        }
+
+        /* ==========================================================================
+           7. BACKGROUND IMAGE MANAGEMENT & ADMIN LOGIC
+           ========================================================================== */
+        function processAndApplyBgFile(file) {
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert('이미지 파일만 업로드할 수 있습니다.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                const dataUrl = evt.target.result;
+                currentGameBg = 'custom';
+                customBgUrl = dataUrl;
+                
+                // 브라우저 캐시 및 영구 데이터베이스(IndexedDB + LocalStorage)에 보관
+                await saveToCacheDB('hangul_pang_bg_theme', 'custom');
+                await saveToCacheDB('hangul_pang_bg_url', dataUrl);
+                
+                const statusSpan = document.getElementById('bg-upload-status');
+                if (statusSpan) {
+                    statusSpan.innerText = '✅ 배경 이미지가 성공적으로 적용되었습니다!';
+                    statusSpan.classList.remove('hidden');
+                }
+                alert('배경 이미지가 성공적으로 설정되었습니다!');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleDirectBgUpload(e) {
+            const file = e.target.files && e.target.files[0];
+            processAndApplyBgFile(file);
+        }
+
+        function uploadCustomBgFile(e) {
+            const file = e.target.files && e.target.files[0];
+            processAndApplyBgFile(file);
+        }
+
+        async function resetToDefaultBg() {
+            currentGameBg = 'hanok';
+            customBgUrl = 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png';
+            await saveToCacheDB('hangul_pang_bg_theme', 'hanok');
+            await saveToCacheDB('hangul_pang_bg_url', 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png');
+            const statusSpan = document.getElementById('bg-upload-status');
+            if (statusSpan) {
+                statusSpan.innerText = '🍂 아름다운 가을 한옥 마을 배경으로 변경되었습니다.';
+                statusSpan.classList.remove('hidden');
+            }
+            alert('기본 가을 한옥 배경화면으로 변경되었습니다.');
+        }
+
+        let adminFilter = 'all';
+
+        async function setGameTheme(theme) {
+            currentGameBg = theme;
+            if (theme === 'hanok') {
+                customBgUrl = 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png';
+                await saveToCacheDB('hangul_pang_bg_url', customBgUrl);
+            } else {
+                customBgUrl = '';
+                await saveToCacheDB('hangul_pang_bg_url', '');
+            }
+            await saveToCacheDB('hangul_pang_bg_theme', theme);
+            alert('게임 배경 테마가 변경되었습니다!');
+        }
+
+        async function applyCustomBgUrl() {
+            const urlInput = document.getElementById('bg-url-input');
+            const url = urlInput.value.trim();
+            if (!url) {
+                alert('이미지 URL을 입력하세요.');
+                return;
+            }
+            currentGameBg = 'custom';
+            customBgUrl = url;
+            await saveToCacheDB('hangul_pang_bg_theme', 'custom');
+            await saveToCacheDB('hangul_pang_bg_url', url);
+            alert('사용자 지정 배경 이미지가 등록되었습니다!');
+        }
+
+        function applyGameBgToArena() {
+            const arena = document.getElementById('game-arena');
+            if (!arena) return;
+
+            const theme = currentGameBg || 'hanok';
+            const bgUrl = customBgUrl || (theme === 'hanok' ? 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png' : '');
+
+            arena.style.backgroundImage = '';
+            arena.className = "relative flex-grow w-full h-full mt-2 rounded-2xl overflow-hidden border-2 border-amber-300 shadow-inner game-bg-cover transition-all duration-500 ";
+
+            if (theme === 'hanok') {
+                const targetUrl = bgUrl || 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png';
+                arena.style.backgroundImage = `url('${targetUrl}')`;
+            } else if (theme === 'custom' && bgUrl) {
+                arena.style.backgroundImage = `url('${bgUrl}')`;
+            } else if (theme === 'forest') {
+                arena.classList.add('bg-gradient-to-b', 'from-emerald-200', 'via-teal-100', 'to-emerald-50');
+            } else if (theme === 'pink') {
+                arena.classList.add('bg-gradient-to-b', 'from-pink-200', 'via-rose-100', 'to-pink-50');
+            } else if (theme === 'night') {
+                arena.classList.add('bg-gradient-to-b', 'from-indigo-950', 'via-slate-900', 'to-purple-950');
+            } else if (theme === 'sunset') {
+                arena.classList.add('bg-gradient-to-b', 'from-amber-200', 'via-orange-100', 'to-yellow-50');
+            } else {
+                // Sky Default
+                arena.classList.add('bg-gradient-to-b', 'from-sky-200', 'via-sky-100', 'to-amber-50');
+            }
+        }
+
+        function openAdminModal() {
+            document.getElementById('admin-pass-input').value = '';
+            document.getElementById('modal-admin-pass').classList.remove('hidden');
+        }
+
+        function closeAdminModal() {
+            document.getElementById('modal-admin-pass').classList.add('hidden');
+        }
+
+        function verifyAdminPassword() {
+            const pass = document.getElementById('admin-pass-input').value;
+            if (pass === '1234' || pass === '') {
+                closeAdminModal();
+                switchScreen('admin');
+            } else {
+                alert('비밀번호가 올바르지 않습니다. (기본: 1234)');
+            }
+        }
+
+        function filterAdminWords(type) {
+            adminFilter = type;
+            document.querySelectorAll('.admin-tab').forEach(tab => {
+                tab.className = 'admin-tab bg-gray-200 text-gray-700 px-4 py-1.5 rounded-full text-sm font-bold';
+            });
+            event.target.className = 'admin-tab active bg-purple-600 text-white px-4 py-1.5 rounded-full text-sm font-bold';
+            renderAdminWords();
+        }
+
+        function renderAdminWords() {
+            const grid = document.getElementById('admin-word-grid');
+            grid.innerHTML = '';
+
+            const count2 = wordList.filter(w => w.length === 2).length;
+            const count3 = wordList.filter(w => w.length === 3).length;
+            const count4 = wordList.filter(w => w.length >= 4).length;
+
+            document.getElementById('count-all').innerText = wordList.length;
+            document.getElementById('count-2').innerText = count2;
+            document.getElementById('count-3').innerText = count3;
+            document.getElementById('count-4').innerText = count4;
+
+            let filtered = wordList.filter(w => {
+                if (adminFilter === '2') return w.length === 2;
+                if (adminFilter === '3') return w.length === 3;
+                if (adminFilter === '4') return w.length >= 4;
+                return true;
+            });
+
+            filtered.forEach(word => {
+                const card = document.createElement('div');
+                card.className = "bg-white p-3 rounded-xl border-2 border-purple-200 shadow-sm flex items-center justify-between";
+                card.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl font-bold text-gray-800">${word}</span>
+                        <span class="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-md">${word.length}글자</span>
+                    </div>
+                    <button onclick="deleteWord('${word}')" class="text-gray-400 hover:text-red-500 text-lg transition-colors p-1">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function addNewWord() {
+            const input = document.getElementById('new-word-input');
+            const newWord = input.value.trim();
+
+            if (!newWord) {
+                alert('추가할 단어를 입력해 주세요.');
+                return;
+            }
+
+            if (!/^[가-힣]+$/.test(newWord)) {
+                alert('한글 단어만 입력할 수 있습니다.');
+                return;
+            }
+
+            if (wordList.includes(newWord)) {
+                alert('이미 등록된 단어입니다.');
+                return;
+            }
+
+            wordList.push(newWord);
+            saveWords();
+            input.value = '';
+            renderAdminWords();
+        }
+
+        function deleteWord(word) {
+            if (confirm(`'${word}' 단어를 삭제할까요?`)) {
+                wordList = wordList.filter(w => w !== word);
+                saveWords();
+                renderAdminWords();
+            }
+        }
+
+        /* ==========================================================================
+           8. INITIALIZATION ON PAGE LOAD
+           ========================================================================== */
+        window.onload = async function() {
+            await loadWords();
+
+            // 배경 및 테마 브라우저 캐시에서 복원
+            const savedTheme = await getFromCacheDB('hangul_pang_bg_theme', 'hanok');
+            const savedUrl = await getFromCacheDB('hangul_pang_bg_url', 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png');
+            currentGameBg = savedTheme || 'hanok';
+            customBgUrl = savedUrl || 'Gemini_Generated_Image_7c2lm07c2lm07c2l.png';
+
+            // 저장된 게임 설정(글자 수, 게임 시간, 속도, 음소거) 브라우저 캐시에서 복원
+            const savedWordLen = await getFromCacheDB('hangul_pang_word_length', null);
+            if (savedWordLen) {
+                selectWordLength(savedWordLen);
+            }
+
+            const savedTime = await getFromCacheDB('hangul_pang_game_time', null);
+            if (savedTime) {
+                selectGameTime(savedTime);
+            }
+
+            const savedSpeed = await getFromCacheDB('hangul_pang_game_speed', null);
+            if (savedSpeed) {
+                selectGameSpeed(savedSpeed);
+            }
+
+            const savedMute = await getFromCacheDB('hangul_pang_is_muted', null);
+            if (savedMute !== null) {
+                toggleAudioMute(!!savedMute);
+            }
+        };
+    </script>
+</body>
+</html>
